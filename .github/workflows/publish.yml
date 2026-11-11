@@ -112,7 +112,7 @@ jobs:
           repo_gpgcheck=1
           gpgkey=file://$GITHUB_WORKSPACE/public/kuml.asc
           REPO
-          dnf --disablerepo='*' --enablerepo=kuml-test list available
+          dnf -y --disablerepo='*' --enablerepo=kuml-test list available
           dnf install -y --disablerepo='*' --enablerepo=kuml-test --setopt=install_weak_deps=False kuml
           /opt/kuml/bin/kuml --version
 

@@ -1,0 +1,26 @@
+= kUML RPM repository
+
+RPM packages for https://kuml.dev[kUML], served at https://rpm.kuml.dev via GitHub Pages (Fedora, RHEL and derivatives).
+
+== Install
+
+[source,bash]
+----
+sudo curl -fsSL -o /etc/yum.repos.d/kuml.repo https://rpm.kuml.dev/kuml.repo
+sudo dnf install kuml
+----
+
+Currently only `x86_64` packages are published.
+
+== How it works
+
+* The `.rpm` files are built by the kUML release workflow and attached to the GitHub Release of each tag.
+* This repository contains no packages. The workflow `publish.yml` downloads the `.rpm` files of the most recent releases, signs them, builds the repository metadata with `createrepo_c` and deploys it to GitHub Pages.
+* The workflow runs on every kUML release (`repository_dispatch` event `kuml-release`) or manually via `workflow_dispatch`.
+
+== Maintainer setup
+
+. Add the repository secrets `RPM_GPG_PRIVATE_KEY` (armored private key, the same key as for the APT repository) and, if the key has a passphrase, `RPM_GPG_PASSPHRASE`.
+. Enable GitHub Pages with source "GitHub Actions" and set the custom domain `rpm.kuml.dev` (DNS: CNAME `rpm` to `kuml-dev.github.io`).
+. Run the workflow once manually and check `dnf install kuml` on a clean Fedora machine.
+. The kUML release workflow needs a token that may dispatch events to this repository (see the secret `APT_DISPATCH_TOKEN`, it has to cover this repository as well).

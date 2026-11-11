@@ -1,0 +1,110 @@
+name: Publish RPM repository
+
+# Rebuilds the whole repository from the .rpm files attached to the kUML
+# GitHub Releases and deploys it to GitHub Pages (https://rpm.kuml.dev).
+# Triggered by the kUML release workflow (repository_dispatch) or by hand.
+on:
+  repository_dispatch:
+    types: [kuml-release]
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: "Number of most recent kUML releases to include"
+        default: "5"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASES: ${{ github.event.inputs.releases || '5' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y createrepo-c rpm gnupg
+
+      - name: Import signing key
+        env:
+          RPM_GPG_PRIVATE_KEY: ${{ secrets.RPM_GPG_PRIVATE_KEY }}
+          RPM_GPG_PASSPHRASE: ${{ secrets.RPM_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$RPM_GPG_PRIVATE_KEY" ]; then
+            echo "::error::secret RPM_GPG_PRIVATE_KEY is not set"
+            exit 1
+          fi
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          touch ~/.gnupg/passphrase && chmod 600 ~/.gnupg/passphrase
+          if [ -n "$RPM_GPG_PASSPHRASE" ]; then
+            printf '%s' "$RPM_GPG_PASSPHRASE" > ~/.gnupg/passphrase
+          fi
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
+          FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+          echo "KEY_FPR=$FPR" >> "$GITHUB_ENV"
+          # rpmsign calls this command for every package.
+          {
+            echo "%_gpg_name $FPR"
+            echo "%__gpg_sign_cmd %{__gpg} gpg --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-file $HOME/.gnupg/passphrase --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}"
+          } > ~/.rpmmacros
+
+      - name: Download packages from kUML releases
+        run: |
+          mkdir -p rpms
+          for tag in $(gh release list --repo kuml-dev/kUML --limit "$RELEASES" --exclude-drafts --exclude-pre-releases --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --repo kuml-dev/kUML --pattern '*.rpm' --dir rpms || echo "::warning::no .rpm in $tag"
+          done
+          ls -l rpms
+          test -n "$(ls rpms/*.rpm 2>/dev/null)" || { echo "::error::no .rpm files found"; exit 1; }
+
+      - name: Sign packages and build repository
+        run: |
+          mkdir -p public
+          cp rpms/*.rpm public/
+          rpmsign --addsign public/*.rpm
+          createrepo_c public
+          gpg --batch --pinentry-mode loopback --passphrase-file "$HOME/.gnupg/passphrase" \
+            --detach-sign --armor --local-user "$KEY_FPR" public/repodata/repomd.xml
+          gpg --armor --export "$KEY_FPR" > public/kuml.asc
+          cat > public/kuml.repo <<'REPO'
+          [kuml]
+          name=kUML
+          baseurl=https://rpm.kuml.dev/
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://rpm.kuml.dev/kuml.asc
+          REPO
+          cp site/index.html public/
+          echo "rpm.kuml.dev" > public/CNAME
+          touch public/.nojekyll
+
+      - name: Verify signatures
+        run: |
+          gpg --verify public/repodata/repomd.xml.asc public/repodata/repomd.xml
+          rpm --import public/kuml.asc
+          rpm --checksig public/*.rpm
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

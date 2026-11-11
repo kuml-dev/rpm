@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kUML RPM repository</title>
+<style>
+:root { --bg: #ffffff; --fg: #1a1a1a; --code: #f2f2f2; }
+@media (prefers-color-scheme: dark) { :root { --bg: #14161a; --fg: #e8e8e8; --code: #23262c; } }
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 16px; }
+pre { background: var(--code); padding: 12px; overflow-x: auto; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h1>kUML RPM repository</h1>
+<p>RPM packages for <a href="https://kuml.dev">kUML</a> (Fedora, RHEL and derivatives, <code>x86_64</code> only).</p>
+<pre>sudo curl -fsSL -o /etc/yum.repos.d/kuml.repo https://rpm.kuml.dev/kuml.repo
+sudo dnf install kuml</pre>
+<p>Public key: <a href="kuml.asc">kuml.asc</a>.</p>
+</body>
+</html>

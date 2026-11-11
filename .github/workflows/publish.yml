@@ -23,15 +23,20 @@ concurrency:
 
 jobs:
   build:
+    # Fedora container: the repository is built and signed with Fedora's own
+    # createrepo_c/rpmsign and then installed with dnf, so a green run proves
+    # that dnf accepts it. Only the deploy job needs the Ubuntu runner.
     runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASES: ${{ github.event.inputs.releases || '5' }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y createrepo-c rpm gnupg
+        run: dnf install -y createrepo_c rpm-sign gnupg2 gh git tar gzip findutils
+
+      - uses: actions/checkout@v4
 
       - name: Import signing key
         env:
@@ -52,10 +57,11 @@ jobs:
           printf '%s' "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
           FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
           echo "KEY_FPR=$FPR" >> "$GITHUB_ENV"
-          # rpmsign calls this command for every package.
+          # rpmsign signs every package with this key; the extra arguments make
+          # gpg non-interactive (passphrase from file, loopback pinentry).
           {
             echo "%_gpg_name $FPR"
-            echo "%__gpg_sign_cmd %{__gpg} gpg --batch --no-verbose --no-armor --pinentry-mode loopback --passphrase-file $HOME/.gnupg/passphrase --no-secmem-warning -u \"%{_gpg_name}\" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}"
+            echo "%_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback --passphrase-file $HOME/.gnupg/passphrase"
           } > ~/.rpmmacros
 
       - name: Download packages from kUML releases
@@ -94,6 +100,21 @@ jobs:
           gpg --verify public/repodata/repomd.xml.asc public/repodata/repomd.xml
           rpm --import public/kuml.asc
           rpm --checksig public/*.rpm
+
+      - name: Install with dnf from the built repository
+        run: |
+          cat > /etc/yum.repos.d/kuml-test.repo <<REPO
+          [kuml-test]
+          name=kUML (test)
+          baseurl=file://$GITHUB_WORKSPACE/public
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=file://$GITHUB_WORKSPACE/public/kuml.asc
+          REPO
+          dnf --disablerepo='*' --enablerepo=kuml-test list available
+          dnf install -y --disablerepo='*' --enablerepo=kuml-test --setopt=install_weak_deps=False kuml
+          /opt/kuml/bin/kuml --version
 
       - uses: actions/upload-pages-artifact@v3
         with:

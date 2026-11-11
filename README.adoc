@@ -16,6 +16,7 @@ Currently only `x86_64` packages are published.
 
 * The `.rpm` files are built by the kUML release workflow and attached to the GitHub Release of each tag.
 * This repository contains no packages. The workflow `publish.yml` downloads the `.rpm` files of the most recent releases, signs them, builds the repository metadata with `createrepo_c` and deploys it to GitHub Pages.
+* The build runs in a Fedora container and installs `kuml` with `dnf` from the freshly built repository before it deploys, so a green run shows that `dnf` accepts the repository.
 * The workflow runs on every kUML release (`repository_dispatch` event `kuml-release`) or manually via `workflow_dispatch`.
 
 == Maintainer setup

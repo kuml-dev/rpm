@@ -1,0 +1,44 @@
+name: Verify installation
+
+# Installs kuml and kuml-desktop from https://rpm.kuml.dev in a clean Fedora
+# container, the way a user would: add the repo file, dnf install. Manual, and
+# after every publish run.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Publish RPM repository"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: fedora:latest
+    steps:
+      - name: Add the repository
+        shell: sh
+        run: |
+          dnf install -y ca-certificates curl
+          curl -fsSL -o /etc/yum.repos.d/kuml.repo https://rpm.kuml.dev/kuml.repo
+          cat /etc/yum.repos.d/kuml.repo
+          dnf -y --disablerepo='*' --enablerepo=kuml list --available
+
+      - name: Install the command-line tool
+        shell: sh
+        run: |
+          dnf install -y kuml
+          rpm -q kuml
+          if command -v kuml >/dev/null 2>&1; then kuml --version; else /opt/kuml/bin/kuml --version; fi
+
+      - name: Install the desktop app
+        if: ${{ always() }}
+        shell: sh
+        run: |
+          dnf install -y kuml-desktop
+          rpm -q kuml-desktop
+          ls -l /opt/kuml-desktop/bin/kuml-desktop

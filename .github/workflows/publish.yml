@@ -70,6 +70,10 @@ jobs:
           for tag in $(gh release list --repo kuml-dev/kUML --limit "$RELEASES" --exclude-drafts --exclude-pre-releases --json tagName -q '.[].tagName'); do
             gh release download "$tag" --repo kuml-dev/kUML --pattern '*.rpm' --dir rpms || echo "::warning::no .rpm in $tag"
           done
+          # The first desktop RPM (kUML 0.56.0) carried the jpackage-mapped version 56.0.0,
+          # which rpm sorts ABOVE every real 0.x version, so dnf would never offer a newer
+          # desktop package. It is left out of the repository (the 0.56.0 release itself is untouched).
+          rm -f rpms/kuml-desktop-5[0-6].0.0-*.rpm
           ls -l rpms
           test -n "$(ls rpms/*.rpm 2>/dev/null)" || { echo "::error::no .rpm files found"; exit 1; }
 
